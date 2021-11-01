@@ -1,0 +1,182 @@
+const unsigned short MASK_DEC[]={0XBF,0X86,0XDB,0XCF,0XE6,0XED,0XFD,0X87,0XFF,0XEF};   //Maska cifre:  "0"  "1"  "2"  "3"  "4" "5"  "6"  "7"  "8"  "9" 
+unsigned short poz=0, cif, x3=0, xm=0, xs=0;    //Deklaracija promenljivih koje su neoznačene kratke celobrojne promenljive opsega 0-255
+void interrupt() // Definicija interrupt funkcije
+{ 
+ INTCON.T0IF=0;  // Resetovanje T0IF. 
+ TMR0=100;    // Dodela početne vrednosti TMR0. 
+ PORTA.F0=0 ;   // Isključenje indikatora I0. 
+ PORTA.F1=0 ;   // Isključenje indikatora I1.  
+ PORTA.F2=0 ;   // Isključenje indikatora I2. 
+ if(poz==0)    // Ako je poz=0,uključuje se indikator I0. 
+ {   poz=1;     // Da bi se u sledećem prekidu uključio indikator I1
+     cif=xs%10;   // Cifra jedinica promenljive x1 dobija se deljenjem po modulu 10. 
+     PORTB = MASK_DEC[cif];   // Na indikatoru I0 prikazuje se cifra jedinica promenljive xs. 
+     PORTA.F0=1;   // Uključuje se indikator I0
+ }   
+ else  {   if(poz==1)   // Ako je poz=1,uključuje se indikator I1
+                {     poz=2;   // Da bi se u sledećem prekidu uključio ind. I2. 
+                      if(xm>0 || xs>9) 
+                      { 
+                      cif=xs/10;    // Cifra desetica promenljive xs dobija se celobrojnim deljenjem sa 10
+                      PORTB = MASK_DEC[cif];   // Na indikatoru I1 prikazuje se cifra desetica prom. xs
+                      PORTA.F1=1;   // Uključuje se indikator I1
+                      }
+                }
+      else  {  poz=0;   // Da bi se u sledećem prekidu uključio ind. I0
+              if(xm>0)   // Ako je broj min >0, na indikatoru I2  prikazuje se vrednost promenljive xm. 
+                { PORTB = MASK_DEC[xm]; 
+                  PORTA.F2=1; // Uključuje se indikator I2
+                }
+            }
+
+      }
+}
+
+void PAUZA100ms() // Definicija funkcije PAUZA100ms. 
+{
+Delay_ms(100); // Pauza od 100ms. 
+} 
+
+void main()    // Definicija main funkcije. 
+{ 
+ TRISA = 0B00010000; // Pin RA4 je ulazni a svi ostali su izl. 
+ TRISB = 0B10000000; // Pin RB7 je ulazni a svi ostali su izl. 
+ PORTA = 0;      // LED i indikatori su isključeni. 
+ PORTB = 0;      // PORTB je resetovan. 
+ OPTION_REG=0B00000100;// Podešavanje OPTION_REG. 
+ TMR0=100;      // Dodela početne vrednosti TMR0. 
+ INTCON.T0IE=1;   // Dozvoljeni su prekidi zbog prekoračenja max vrednosti slobodnog brojača TMR0
+ INTCON.GIE=1;    // Globalna dozvola prekida. 
+  xm=EEPROM_Read(0x01); // Dodeljivanje sadržaja mem.lokacije EEPROM memorije, promenljivoj xm
+  if(xm>0 || xs>0)   // Ako je broj minuta ili sekundi >0 nastavlja se odbrojavanje. 
+  goto LAB2;    
+  
+  // Podešavanje minuta 
+do   {    if(PORTA.F4==0)  // Ako je T1 pritisnut. 
+          { 
+          PAUZA100ms();
+          if(xm==9)      
+          xm=0;     
+          else      
+          xm++; 
+            if(PORTA.F4==0) // Ako je T1 pritisnut. 
+            {  
+                PAUZA100ms(); 
+                PAUZA100ms(); 
+            } 
+          PAUZA100ms();
+          }
+     }
+while(PORTB.F7==1);   // Ako je T2 otpušten, i dalje se može  podešavati broj minuta.  
+PAUZA100ms();   // Pauza za debaunsiranje 
+while(PORTB.F7==0) // Ako je T2 pritisnut
+  {
+  }
+PAUZA100ms();   // Pauza za debaunsiranje
+
+// Podešavanje desetica sekundi. 
+ do   {    if(PORTA.F4==0) // Ako je T1 pritisnut
+            { 
+            PAUZA100ms();
+            if(xs/10==5)
+            xs=xs-50;
+            else 
+            xs=xs+10;
+            if(PORTA.F4==0)// Ako je T1 pritisnut. 
+              { 
+                PAUZA100ms(); 
+                PAUZA100ms(); 
+              }
+            PAUZA100ms();
+            }
+      }
+      while(PORTB.F7==1);   // Ako je T2 otpušten, i dalje se može podešavati broj desetica sekundi
+      PAUZA100ms();   // Pauza za debaunsiranje
+      while(PORTB.F7==0) // Ako je T2 pritisnut. 
+      { 
+      } 
+      PAUZA100ms();   // Pauza za debaunsiranje
+
+// Podešavanje jedinica sekundi 
+
+do   {    if(PORTA.F4==0) // Ako je T1 pritisnut. 
+          { 
+            PAUZA100ms();
+            if(xs%10==9) 
+            xs=xs-9; 
+            else 
+            xs++; 
+            if(PORTA.F4==0)// Ako je T1 pritisnut. 
+              { 
+              PAUZA100ms(); 
+              PAUZA100ms(); 
+              }
+             PAUZA100ms(); 
+          }   
+     }
+     while(PORTB.F7==1); // Ako je T2 otpušten, i dalje se može podešavati broj jedinica sekundi
+     
+//Odbrojavanje
+
+ LABT1: while(PORTA.F4==1) // Pritiskom na T1, započinje odbrojavanje 
+  {            
+  } 
+ if(xm==0 && xs==0) 
+  { 
+LAB1: PORTA.F3=1;  // Uključuje se LED dioda. 
+      while(1)     // Beskonačna petlja. 
+      {  
+      }
+  }
+  else
+  {
+    do
+      { 
+        LAB2: Delay_ms(1000); 
+        if(xs==0)       
+        {   xs=59;
+            xm--;
+            goto LAB3;
+        }
+        else       
+        {        
+          xs--; 
+          LAB3: EEPROM_Write(0x01,xm);  // Upis promenljive xm u EEPROM
+          EEPROM_Write(0x00,xs);  // Upis promenljive xs u EEPROM. 
+          if(xm==0 && xs==0)
+          goto LAB1; 
+        } 
+        if(PORTB.F7==0) // Ako je pritisnut T2... 
+        {        
+          x3++; 
+          if(x3==3)   // Ako je x3=3, to znači da su prošle 3 sekunde
+          {        
+            xm=0;
+            xs=0;
+            goto LAB3;
+          }
+         }
+         
+         else x3=0;
+       }
+     while(1); // Beskonačna petlja
+ }
+}
+
+
+           
+
+      
+      
+      
+              
+
+            
+
+          
+          
+
+
+
+
+
